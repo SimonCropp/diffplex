@@ -12,7 +12,7 @@ The DiffPlex library currently exposes two interfaces for generating diffs:
 
 ## Examples
 
-For examples of how to use the API please see the the following projects contained in the DiffPlex solution.
+For examples of how to use the API please see the following projects contained in the DiffPlex solution.
 
 For use of the `IDiffer` interface see:
 
