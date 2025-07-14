@@ -28,7 +28,6 @@ using Windows.Foundation;
 using Windows.Foundation.Collections;
 
 namespace DiffPlex.UI;
-
 using DependencyObjectProxy = DependencyObjectProxy<DiffTextView>;
 
 public sealed partial class DiffTextView : UserControl
@@ -486,26 +485,16 @@ public sealed partial class DiffTextView : UserControl
     /// </summary>
     public void ScrollPreviousDiffIntoView()
     {
-        if (IsSplitView) ScrollPreviousDiffIntoView<DiffTextViewModel>(SplitElement, GetDiffPiece);
-        else ScrollPreviousDiffIntoView<InlineDiffTextViewModel>(UnifiedElement, GetDiffPiece);
-    }
-
-    /// <summary>
-    /// Scrolls to previous diff line.
-    /// </summary>
-    private static void ScrollPreviousDiffIntoView<T>(ListView list, Func<T, DiffPiece> resolver) where T : class
-    {
-        var elements = new List<(T, double)>();
+        var list = GetActiveListView();
+        var elements = new List<(BaseDiffTextViewModel, double)>();
         foreach (var item in list.Items)
         {
-            var container = list.ContainerFromItem(item) as ListViewItem;
-            if (container == null || item is not T model) continue;
-            var piece = resolver(model);
-            if (piece == null) continue;
+            if (!GetItemFromList(list, item, out var container, out var model)) continue;
+            if (model.IsNullLine) continue;
             var transform = container.TransformToVisual(list) as MatrixTransform;
             if (transform == null) continue;
             var pos = transform.Matrix.OffsetY;
-            var isUnchanged = piece.Type == ChangeType.Unchanged;
+            var isUnchanged = model.IsUnchanged;
             if (pos >= 0) break;
             if (!isUnchanged) elements.Add((model, pos));
         }
@@ -519,7 +508,7 @@ public sealed partial class DiffTextView : UserControl
             return;
         }
 
-        var first = list.Items.OfType<T>().FirstOrDefault();
+        var first = list.Items.OfType<BaseDiffTextViewModel>().FirstOrDefault();
         if (first != null) list.ScrollIntoView(first);
     }
 
@@ -528,23 +517,13 @@ public sealed partial class DiffTextView : UserControl
     /// </summary>
     public void ScrollNextDiffIntoView()
     {
-        if (IsSplitView) ScrollNextDiffIntoView<DiffTextViewModel>(SplitElement, GetDiffPiece);
-        else ScrollNextDiffIntoView<InlineDiffTextViewModel>(UnifiedElement, GetDiffPiece);
-    }
-
-    /// <summary>
-    /// Scrolls to previous diff line.
-    /// </summary>
-    private static void ScrollNextDiffIntoView<T>(ListView list, Func<T, DiffPiece> resolver) where T : class
-    {
+        var list = GetActiveListView();
         var isIn = false;
         var height = Math.Max(list.ActualHeight - 50, 10);
         foreach (var item in list.Items)
         {
-            var container = list.ContainerFromItem(item) as ListViewItem;
-            if (container == null || item is not T model) continue;
-            var piece = resolver(model);
-            if (piece == null) continue;
+            if (!GetItemFromList(list, item, out var container, out var model)) continue;
+            if (model.IsNullLine) continue;
             var transform = container.TransformToVisual(list) as MatrixTransform;
             if (transform == null) continue;
             var pos = transform.Matrix.OffsetY;
@@ -554,11 +533,108 @@ public sealed partial class DiffTextView : UserControl
                 continue;
             }
 
-            if (!isIn || piece.Type == ChangeType.Unchanged) continue;
+            if (!isIn || model.IsUnchanged) continue;
             isIn = true;
             list.ScrollIntoView(model, ScrollIntoViewAlignment.Leading);
             break;
         }
+    }
+
+    /// <summary>
+    /// Finds all line numbers that the text contains the given string.
+    /// </summary>
+    /// <param name="q">The string to seek.</param>
+    /// <returns>All line numbers with the given string.</returns>
+    public IEnumerable<DiffTextViewInfo> Find(string q)
+    {
+        var list = GetActiveListView();
+        foreach (var item in list.Items)
+        {
+            if (item is not BaseDiffTextViewModel m) continue;
+            if (m.Contains(q)) yield return m.ToInfo();
+        }
+    }
+
+    /// <summary>
+    /// Attempts to set focus to a specific line.
+    /// </summary>
+    /// <param name="lineNumber">The line number.</param>
+    /// <param name="focusState">How this element obtains focus.</param>
+    /// <returns>true if keyboard focus and logical focus were set to the specific line; otherwise, false, if only logical focus was set to the specific line, or if the call to this method did not force the focus to change.</returns>
+    public bool Focus(int lineNumber, FocusState focusState)
+    {
+        if (IsSplitView)
+        {
+            var line = sideBySide.FirstOrDefault(ele => ele?.Right?.Position == lineNumber);
+            if (line is null || SplitElement.ContainerFromItem(line) is not ListViewItem container) return false;
+            return container.Focus(focusState);
+        }
+        else
+        {
+            var line = inlines.FirstOrDefault(ele => ele?.Position == lineNumber);
+            if (line is null || UnifiedElement.ContainerFromItem(line) is not ListViewItem container) return false;
+            return container.Focus(focusState);
+        }
+    }
+
+    /// <summary>
+    /// Attempts to set focus to a specific line.
+    /// </summary>
+    /// <param name="info">The line.</param>
+    /// <param name="focusState">How this element obtains focus.</param>
+    /// <returns>true if keyboard focus and logical focus were set to the specific line; otherwise, false, if only logical focus was set to the specific line, or if the call to this method did not force the focus to change.</returns>
+    public bool Focus(DiffTextViewInfo info, FocusState focusState)
+    {
+        if (!info.Position.HasValue) return false;
+        switch (info.ViewType)
+        {
+            case DiffTextViewType.Inline:
+                return FocusInUnifiedView(info.Position.Value, focusState);
+            case DiffTextViewType.Left:
+                return FocusInSplitView(info.Position.Value, true, focusState);
+            case DiffTextViewType.Right:
+                return FocusInSplitView(info.Position.Value, false, focusState);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Attempts to set focus to a specific line.
+    /// </summary>
+    /// <param name="lineNumber">The line number.</param>
+    /// <param name="isLeft">true if the line number is for old text; otherwise, false.</param>
+    /// <param name="focusState">How this element obtains focus.</param>
+    /// <returns>true if keyboard focus and logical focus were set to the specific line; otherwise, false, if only logical focus was set to the specific line, or if the call to this method did not force the focus to change.</returns>
+    public bool FocusInSplitView(int lineNumber, bool isOld, FocusState focusState)
+    {
+        if (!IsSplitView) IsSplitView = true;
+        var line = isOld ? sideBySide.FirstOrDefault(ele => ele?.Left?.Position == lineNumber) : sideBySide.FirstOrDefault(ele => ele?.Right?.Position == lineNumber);
+        if (line is null || SplitElement.ContainerFromItem(line) is not ListViewItem container) return false;
+        return container.Focus(focusState);
+    }
+
+    /// <summary>
+    /// Attempts to set focus to a specific line.
+    /// </summary>
+    /// <param name="lineNumber">The line number.</param>
+    /// <param name="focusState">How this element obtains focus.</param>
+    /// <returns>true if keyboard focus and logical focus were set to the specific line; otherwise, false, if only logical focus was set to the specific line, or if the call to this method did not force the focus to change.</returns>
+    public bool FocusInSplitView(int lineNumber, FocusState focusState)
+        => FocusInSplitView(lineNumber, false, focusState);
+
+    /// <summary>
+    /// Attempts to set focus to a specific line.
+    /// </summary>
+    /// <param name="lineNumber">The line number.</param>
+    /// <param name="focusState">How this element obtains focus.</param>
+    /// <returns>true if keyboard focus and logical focus were set to the specific line; otherwise, false, if only logical focus was set to the specific line, or if the call to this method did not force the focus to change.</returns>
+    public bool FocusInUnifiedView(int lineNumber, FocusState focusState)
+    {
+        if (IsSplitView) IsSplitView = false;
+        var line = inlines.FirstOrDefault(ele => ele?.Position == lineNumber);
+        if (line is null || UnifiedElement.ContainerFromItem(line) is not ListViewItem container) return false;
+        return container.Focus(focusState);
     }
 
     /// <summary>
@@ -571,12 +647,49 @@ public sealed partial class DiffTextView : UserControl
         if (IsSplitView)
         {
             var line = sideBySide.FirstOrDefault(ele => ele?.Right?.Position == lineNumber);
+            if (line is null) return;
             SplitElement.ScrollIntoView(line, alignment);
         }
         else
         {
             var line = inlines.FirstOrDefault(ele => ele?.Position == lineNumber);
+            if (line is null) return;
             UnifiedElement.ScrollIntoView(line, alignment);
+        }
+    }
+
+    /// <summary>
+    /// Scrolls the list to bring the specified line number into view with the specified alignment.
+    /// </summary>
+    /// <param name="info">The line info.</param>
+    /// <param name="alignment">An enumeration value that specifies whether the item uses default or leading alignment.</param>
+    public void ScrollIntoView(DiffTextViewInfo info, ScrollIntoViewAlignment alignment = ScrollIntoViewAlignment.Default)
+    {
+        if (info.Position == null) return;
+        var lineNumber = info.Position.Value;
+        switch (info.ViewType)
+        {
+            case DiffTextViewType.Inline:
+                {
+                    var line = inlines.FirstOrDefault(ele => ele?.Position == lineNumber);
+                    if (line is null) return;
+                    UnifiedElement.ScrollIntoView(line, alignment);
+                    break;
+                }
+            case DiffTextViewType.Left:
+                {
+                    var line = sideBySide.FirstOrDefault(ele => ele?.Left?.Position == lineNumber);
+                    if (line is null) return;
+                    SplitElement.ScrollIntoView(line, alignment);
+                    break;
+                }
+            case DiffTextViewType.Right:
+                {
+                    var line = sideBySide.FirstOrDefault(ele => ele?.Right?.Position == lineNumber);
+                    if (line is null) return;
+                    SplitElement.ScrollIntoView(line, alignment);
+                    break;
+                }
         }
     }
 
@@ -638,7 +751,24 @@ public sealed partial class DiffTextView : UserControl
         _ = FocusFilePathTextBoxAsync();
     }
 
-    private List<T> Filter<T>(List<T> col, Func<T, DiffPiece> piece)
+    private ListView GetActiveListView()
+        => IsSplitView ? SplitElement : UnifiedElement;
+
+    private bool GetItemFromList(ListView list, object item, out ListViewItem element, out BaseDiffTextViewModel model)
+    {
+        if (item is not BaseDiffTextViewModel m)
+        {
+            element = null;
+            model = null;
+            return false;
+        }
+
+        element = (list ?? GetActiveListView()).ContainerFromItem(item) as ListViewItem;
+        model = m;
+        return element is not null;
+    }
+
+    private List<T> Filter<T>(List<T> col) where T : BaseDiffTextViewModel
     {
         if (!IsUnchangedSectionCollapsed) return col;
         var list = new List<T>();
@@ -649,11 +779,10 @@ public sealed partial class DiffTextView : UserControl
             try
             {
                 var row = col[i];
-                var item = piece(row);
-                if (item == null) continue;
+                if (row.IsNullLine) continue;
                 var j = list.Count;
                 list.Add(row);
-                if (item.Type == ChangeType.Unchanged)
+                if (row.IsUnchanged)
                 {
                     if (isUnchanged < 0) isUnchanged = j;
                     continue;
@@ -669,6 +798,13 @@ public sealed partial class DiffTextView : UserControl
             {
                 return col;
             }
+        }
+
+        if (isUnchanged >= 0)
+        {
+            var begin = isUnchanged + lines;
+            var len = list.Count - lines - begin;
+            if (len >= 0) list.RemoveRange(begin, len);
         }
 
         return list;
@@ -695,7 +831,7 @@ public sealed partial class DiffTextView : UserControl
         }
 
         sideBySide = col;
-        SplitElement.ItemsSource = Filter(col, GetDiffPiece);
+        SplitElement.ItemsSource = Filter(col);
         InfoElement.Text = $"+{add}  -{remove}";
     }
 
@@ -730,7 +866,7 @@ public sealed partial class DiffTextView : UserControl
             }
         }
 
-        UnifiedElement.ItemsSource = Filter(col, GetDiffPiece);
+        UnifiedElement.ItemsSource = Filter(col);
         InfoElement.Text = $"+{add}  -{remove}";
     }
 
@@ -744,7 +880,7 @@ public sealed partial class DiffTextView : UserControl
         LinesContextMenuItem.Visibility = isCollapsed ? Visibility.Visible : Visibility.Collapsed;
         foreach (var m in LinesContextMenuItem.Items)
         {
-            if (m is not RadioMenuFlyoutItem radio) continue;
+            if (m is not ToggleMenuFlyoutItem radio) continue;
             var s = radio.Text?.Trim();
             if (string.IsNullOrEmpty(s))
             {
@@ -811,6 +947,16 @@ public sealed partial class DiffTextView : UserControl
         GoToNumberBox.Value = double.NaN;
         if (IsSplitView) SplitElement.Focus(FocusState.Programmatic);
         else UnifiedElement.Focus(FocusState.Programmatic);
+    }
+
+    private void OnGoToBoxKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Windows.System.VirtualKey.Escape:
+                OnGoToBoxLostFocus();
+                break;
+        }
     }
 
     private void OnSplitViewClick(object sender, RoutedEventArgs e)
@@ -889,12 +1035,21 @@ public sealed partial class DiffTextView : UserControl
         CollapseUnchangedSections(i);
     }
 
-    private void OnGoToBoxLostFocus(object sender, RoutedEventArgs e)
+    private void OnGoToBoxLostFocus()
     {
-        GoToNumberBox.Value = double.NaN;
-        GoToNumberContainer.Visibility = Visibility.Collapsed;
-        GoToMenuButton.IsChecked = false;
+        try
+        {
+            GoToNumberBox.Value = double.NaN;
+            GoToNumberContainer.Visibility = Visibility.Collapsed;
+            GoToMenuButton.IsChecked = false;
+        }
+        catch (InvalidOperationException)
+        {
+        }
     }
+
+    private void OnGoToBoxLostFocus(object sender, RoutedEventArgs e)
+        => OnGoToBoxLostFocus();
 
     private void OnFileSelectClick(object sender, RoutedEventArgs e)
     {
@@ -990,10 +1145,4 @@ public sealed partial class DiffTextView : UserControl
 
     private static void UpdateCollapseState<T>(DiffTextView c, ChangeEventArgs<T> e, DependencyProperty d)
         => c?.UpdateCollapseState();
-
-    private static DiffPiece GetDiffPiece(DiffTextViewModel m)
-        => m.Right;
-
-    private static DiffPiece GetDiffPiece(InlineDiffTextViewModel m)
-        => m.Line;
 }

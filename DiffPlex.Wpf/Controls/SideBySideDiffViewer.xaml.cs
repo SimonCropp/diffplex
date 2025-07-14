@@ -45,6 +45,11 @@ public partial class SideBySideDiffViewer : UserControl
          }));
 
     /// <summary>
+    /// The property to hide line numbers.
+    /// </summary>
+    public static readonly DependencyProperty HideLineNumbersProperty = RegisterDependencyProperty(nameof(HideLineNumbers), false);
+
+    /// <summary>
     /// The property of line number background brush.
     /// </summary>
     public static readonly DependencyProperty LineNumberForegroundProperty = RegisterDependencyProperty<Brush>(nameof(LineNumberForeground), new SolidColorBrush(Color.FromArgb(255, 64, 128, 160)));
@@ -217,6 +222,16 @@ public partial class SideBySideDiffViewer : UserControl
     /// Gets the new text.
     /// </summary>
     public DiffPaneModel NewText => DiffModel?.NewText;
+
+    /// <summary>
+    /// Hides the line numbers.
+    /// </summary>
+    [Bindable(true)]
+    public bool HideLineNumbers
+    {
+        get => (bool)GetValue(HideLineNumbersProperty);
+        set => SetValue(HideLineNumbersProperty, value);
+    }
 
     /// <summary>
     /// Gets or sets the foreground brush of the line number.
@@ -584,6 +599,26 @@ public partial class SideBySideDiffViewer : UserControl
     public IEnumerable<DiffPiece> GetLinesAfterViewport(VisibilityLevels level)
     {
         return Helper.GetLinesAfterViewport(RightContentPanel, level);
+    }
+
+    /// <summary>
+    /// Finds all line numbers that the text contains the given string.
+    /// </summary>
+    /// <param name="q">The string to seek.</param>
+    /// <returns>All lines with the given string.</returns>
+    public IEnumerable<DiffPiece> Find(string q)
+    {
+        return Helper.Find(RightContentPanel, q);
+    }
+
+    /// <summary>
+    /// Finds all line numbers that the text contains the given string.
+    /// </summary>
+    /// <param name="q">The string to seek.</param>
+    /// <returns>All line numbers with the given string.</returns>
+    public IEnumerable<DiffPiece> FindInOld(string q)
+    {
+        return Helper.Find(LeftContentPanel, q);
     }
 
     /// <summary>

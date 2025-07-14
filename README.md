@@ -1,14 +1,15 @@
-DiffPlex ![.NET](https://github.com/mmanela/diffplex/workflows/.NET/badge.svg?branch=master) [![DiffPlex NuGet version](https://img.shields.io/nuget/v/DiffPlex.svg)](https://www.nuget.org/packages/DiffPlex/)
+DiffPlex ![Build](https://github.com/mmanela/diffplex/actions/workflows/dotnet.yml/badge.svg) [![DiffPlex NuGet version](https://img.shields.io/nuget/v/DiffPlex.svg)](https://www.nuget.org/packages/DiffPlex/)
 ========
 
 DiffPlex is C# library to generate textual diffs. It targets `netstandard1.0+`.
 
 # About the API
 
-The DiffPlex library currently exposes two interfaces for generating diffs:
+The DiffPlex library currently exposes several interfaces and classes for generating diffs:
 
 * `IDiffer` (implemented by the `Differ` class) - This is the core diffing class.  It exposes the low level functions to generate differences between texts.
 * `ISidebySideDiffer` (implemented by the `SideBySideDiffer` class) - This is a higher level interface.  It consumes the `IDiffer` interface and generates a `SideBySideDiffModel`.  This is a model which is suited for displaying the differences of two pieces of text in a side by side view.
+* `UnidiffRenderer` - A renderer class that generates unified diff (unidiff) format output compatible with Git, patch utilities, and other standard diff tools.
 
 ## Examples
 
@@ -23,6 +24,10 @@ For use of the `ISidebySideDiffer` interface see:
 
 * `DiffController.cs` and associated MVC views in the `WebDiffer` project
 * `TextBoxDiffRenderer.cs` in the `SilverlightDiffer` project
+
+For use of the `UnidiffRenderer` class see:
+
+* `Program.cs` in the `DiffPlex.ConsoleRunner` project
 
 ## Sample code
 
@@ -133,6 +138,41 @@ Currently provided implementations:
 - `LineEndingsPreservingChunker`
 - `WordChunker`
 
+## UnidiffRenderer Class
+
+The `UnidiffRenderer` class provides functionality to generate unified diff (unidiff) format output, which is the standard format used by Git, patch utilities, and other diff tools.
+
+```csharp
+// Static method for simple usage
+string unidiff = UnidiffRenderer.GenerateUnidiff(
+    oldText: "old content", 
+    newText: "new content",
+    oldFileName: "file1.txt",
+    newFileName: "file2.txt"
+);
+
+// Instance usage with custom settings
+var renderer = new UnidiffRenderer(contextLines: 5);
+string unidiff = renderer.Generate(oldText, newText, "before.txt", "after.txt");
+```
+
+Key features:
+- Generates standard unified diff format compatible with Git and patch tools
+- Configurable number of context lines around changes
+- Support for custom file names in diff headers  
+- Options to ignore whitespace and case differences
+
+Example output:
+```
+--- before.txt
++++ after.txt
+@@ -1,4 +1,4 @@
+ Line 1
+-Old line 2
++New line 2  
+ Line 3
+ Line 4
+```
 
 ## ISideBySideDifferBuilder Interface
 
@@ -157,6 +197,26 @@ public interface ISideBySideDiffBuilder
 DiffPlex also contains a sample website that shows how to create a basic side by side diff in an ASP MVC website.
 
 ![Web page sample](./images/website.png)
+
+## Sample Blazor App
+
+DiffPlex includes a Blazor sample application demonstrating how to render textual diffs in modern Blazor applications. The sample showcases both server-side and client-side rendering capabilities with interactive diff visualization.
+
+![image](https://github.com/user-attachments/assets/862030f5-c759-4556-8b10-19cc281c5e7d)
+
+
+The Blazor components provide:
+- Interactive side-by-side diff rendering
+- Inline diff view mode
+- Unififf rendering 
+
+![image](https://github.com/user-attachments/assets/d91f26d6-da4a-47fd-b490-daeb65ddad11)
+
+To run the sample Blazor application:
+```bash
+cd DiffPlex.Blazor
+dotnet run
+```
 
 # Windows app
 
@@ -260,7 +320,7 @@ public IObservableVector<ICommandBarElement> SecondaryCommands { get; }
 [![NuGet](https://img.shields.io/nuget/v/DiffPlex.Wpf.svg)](https://www.nuget.org/packages/DiffPlex.Wpf/)
 
 DiffPlex WPF control library `DiffPlex.Wpf` is used to render textual diffs in your WPF application.
-It targets `.NET 6`, `.NET Framework 4.8` and `.NET Framework 4.6`.
+It targets `.NET 9`, `.NET 8`, `.NET 6`, `.NET Framework 4.8` and `.NET Framework 4.6`.
 
 ```csharp
 using DiffPlex.Wpf.Controls;
@@ -305,6 +365,9 @@ public bool IsSideBySideViewMode { get; }
 
 // true if collapse unchanged sections; otherwise, false.
 public bool IgnoreUnchanged { get; set; }
+
+// Hides the line numbers.
+public bool HideLineNumbers { get; set; }
 
 // The font size.
 public double FontSize { get; set; }
@@ -385,7 +448,7 @@ public event EventHandler<ViewModeChangedEventArgs> ViewModeChanged;
 Windows Forms control of diff viewer is a WPF element host control.
 It is also included in `DiffPlex.Wpf` assembly.
 You can import it to use in your Windows Forms application.
-It targets `.NET 6`, `.NET Framework 4.8` and `.NET Framework 4.6`.
+It targets `.NET 8`, `.NET 6`, `.NET Framework 4.8` and `.NET Framework 4.6`.
 
 ```csharp
 using DiffPlex.WindowsForms.Controls;

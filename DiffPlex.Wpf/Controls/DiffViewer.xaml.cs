@@ -20,7 +20,6 @@ using System.Windows.Shapes;
 
 using DiffPlex.DiffBuilder;
 using DiffPlex.DiffBuilder.Model;
-using DiffPlex.WindowsForms.Controls;
 
 namespace DiffPlex.Wpf.Controls;
 
@@ -74,6 +73,11 @@ public partial class DiffViewer : UserControl
     /// The property of a flag to ignore case.
     /// </summary>
     public static readonly DependencyProperty IgnoreCaseProperty = RegisterRefreshDependencyProperty(nameof(IgnoreCase), false);
+
+    /// <summary>
+    /// The property to hide line numbers.
+    /// </summary>
+    public static readonly DependencyProperty HideLineNumbersProperty = RegisterDependencyProperty(nameof(HideLineNumbers), false);
 
     /// <summary>
     /// The property of line number background brush.
@@ -399,6 +403,16 @@ public partial class DiffViewer : UserControl
     {
         get => (bool)GetValue(IgnoreCaseProperty);
         set => SetValue(IgnoreCaseProperty, value);
+    }
+
+    /// <summary>
+    /// Hides the line numbers.
+    /// </summary>
+    [Bindable(true)]
+    public bool HideLineNumbers
+    {
+        get => (bool)GetValue(HideLineNumbersProperty);
+        set => SetValue(HideLineNumbersProperty, value);
     }
 
     /// <summary>
@@ -1063,6 +1077,17 @@ public partial class DiffViewer : UserControl
     {
         if (IsSideBySideViewMode) return Helper.GetLinesAfterViewport(RightContentPanel, level);
         else return Helper.GetLinesAfterViewport(InlineContentPanel, level);
+    }
+
+    /// <summary>
+    /// Finds all line numbers that the text contains the given string.
+    /// </summary>
+    /// <param name="q">The string to seek.</param>
+    /// <returns>All lines with the given string.</returns>
+    public IEnumerable<DiffPiece> Find(string q)
+    {
+        if (IsSideBySide) return Helper.Find(RightContentPanel, q);
+        else return Helper.Find(InlineContentPanel, q);
     }
 
     /// <summary>
